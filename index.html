@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Controle de Ponto Inteligente</title>
+
+<style>
+    body {
+        background-color: #121212;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        text-align: center;
+    }
+
+    .container {
+        width: 90%;
+        max-width: 900px;
+        margin: 20px auto;
+        background: #1f1f1f;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 0 12px #000;
+    }
+
+    h1 {
+        margin-bottom: 25px;
+    }
+
+    .linha {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 12px 0;
+    }
+
+    .linha input {
+        width: 65%;
+        padding: 10px;
+        font-size: 18px;
+        border-radius: 6px;
+        border: none;
+        background: #2d2d2d;
+        color: #fff;
+    }
+
+    .ok-btn {
+        width: 33%;
+        background: #00c539;
+        color: #fff;
+        border: none;
+        padding: 12px;
+        font-size: 18px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .ok-btn:hover {
+        background: #00e44a;
+    }
+
+    #calcular {
+        width: 100%;
+        margin-top: 20px;
+        padding: 14px;
+        font-size: 20px;
+        background: #007bff;
+        border: none;
+        color: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    #resultado {
+        background: #2b2b2b;
+        padding: 18px;
+        border-radius: 8px;
+        margin-top: 20px;
+        text-align: left;
+        line-height: 1.6;
+        font-size: 16px;
+        min-height: 48px;
+    }
+
+    #tempoRestante {
+        margin-top: 25px;
+        font-size: 26px;
+        font-weight: bold;
+    }
+
+    .dual-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .btn {
+        padding: 14px;
+        width: 45%;
+        border-radius: 6px;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+    }
+
+    .limpar {
+        background: #6c757d;
+        color: white;
+    }
+
+    .pdf {
+        background: #d81b60;
+        color: white;
+    }
+</style>
+</head>
+
+<body>
+    <!--bibliotecas-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+<h1>Controle de Ponto Inteligente</h1>
+
+<div class="container">
+
+    <!-- META (agora type=time) -->
+    <label>Meta diária (ex: 5:45):</label>
+    <div class="linha">
+        <input id="meta" type="time" step="60" placeholder="08:00">
+        <button class="ok-btn" onclick="fixar('meta')">OK</button>
+    </div>
+
+    <!-- ENTRADA -->
+    <label>Entrada:</label>
+    <div class="linha">
+        <input id="entrada" type="time">
+        <button class="ok-btn" onclick="fixar('entrada')">OK</button>
+    </div>
+
+    <!-- SAÍDA INTERVALO -->
+    <label>Saída intervalo:</label>
+    <div class="linha">
+        <input id="saida_intervalo" type="time">
+        <button class="ok-btn" onclick="fixar('saida_intervalo')">OK</button>
+    </div>
+
+    <!-- RETORNO -->
+    <label>Retorno:</label>
+    <div class="linha">
+        <input id="retorno" type="time">
+        <button class="ok-btn" onclick="fixar('retorno')">OK</button>
+    </div>
+
+    <!--exportar para PDF-->
+    <div class="container" id="printArea">
+
+    <!-- SAÍDA FINAL (opcional) -->
+    <label>Saída final (opcional):</label>
+    <div class="linha">
+        <input id="saida_final" type="time">
+        <button class="ok-btn" onclick="fixar('saida_final')">OK</button>
+    </div>
+
+    <button id="calcular" onclick="calcular()">Calcular</button>
+
+    <div class="dual-buttons">
+        <button class="btn limpar" onclick="limparCampos()">Limpar Campos</button>
+        <button class="btn pdf" onclick="exportarPDF()">Exportar PDF</button>
+    </div>
+
+    <div id="resultado"></div>
+
+    <div id="tempoRestante">Tempo restante:</div>
+</div>
+
+<script>
+/* ----------------- helpers ----------------- */
+
+function fixar(id) {
+    const el = document.getElementById(id);
+    el.style.background = "#3a3a3a";
+}
+
+function parseHora(h) {
+    // recebe "HH:MM" e retorna minutos desde meia-noite
+    if (!h) return NaN;
+    const parts = h.split(":").map(Number);
+    if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return NaN;
+    return parts[0] * 60 + parts[1];
+}
+
+function parseMeta(metaStr) {
+    // meta vem como "HH:MM" por ser input type=time
+    if (!metaStr) return NaN;
+    if (metaStr.includes(":")) {
+        const [h, m] = metaStr.split(":").map(Number);
+        return h * 60 + m;
+    }
+    // fallback — se usuário digitar número
+    const normalized = metaStr.trim().replace(",", ".");
+    return Math.round(parseFloat(normalized) * 60);
+}
+
+function formatarMinutos(min) {
+    const sinal = min < 0 ? "-" : "";
+    min = Math.abs(Math.round(min));
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${sinal}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function addMinutos(horaStr, minAdd) {
+    // horaStr "HH:MM"
+    const min = parseHora(horaStr);
+    const total = (min + minAdd + 24*60) % (24*60);
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/* ----------------- auto-advance Enter ----------------- */
+const camposOrdem = ["meta","entrada","saida_intervalo","retorno","saida_final"];
+camposOrdem.forEach((id, index) => {
+    const campo = document.getElementById(id);
+    if (!campo) return;
+    campo.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const proximo = camposOrdem[index + 1];
+            if (proximo) {
+                document.getElementById(proximo).focus();
+            } else {
+                document.getElementById("calcular").focus();
+            }
+        }
+    });
+});
+
+/* ----------------- cálculo e contagem ----------------- */
+
+let timerInterval = null;
+
+function iniciarContagem(horarioAlvo) {
+    // horarioAlvo: "HH:MM"
+    clearInterval(timerInterval);
+
+    function atualizar() {
+        const agora = new Date();
+        const minAgora = agora.getHours() * 60 + agora.getMinutes();
+        const alvoMin = parseHora(horarioAlvo);
+
+        const restante = Math.round(alvoMin - minAgora);
+
+        const div = document.getElementById("tempoRestante");
+
+        if (isNaN(alvoMin)) {
+            div.textContent = "Tempo restante: --:--";
+            return;
+        }
+
+        if (restante <= 0) {
+            div.textContent = "⏰ Já passou do horário previsto!";
+            clearInterval(timerInterval);
+            return;
+        }
+
+        div.textContent = `Tempo restante até a saída: ${formatarMinutos(restante)}`;
+    }
+
+    // primeira atualização imediata
+    atualizar();
+    timerInterval = setInterval(atualizar, 1000);
+}
+
+function calcular() {
+    const meta = document.getElementById("meta").value;             // "HH:MM"
+    const entradaV = document.getElementById("entrada").value;     // "HH:MM"
+    const saidaIntV = document.getElementById("saida_intervalo").value;
+    const retornoV = document.getElementById("retorno").value;
+    const saidaFinalV = document.getElementById("saida_final").value;
+
+    const out = document.getElementById("resultado");
+
+    // validação básica
+    if (!meta || !entradaV || !saidaIntV || !retornoV) {
+        out.textContent = "⚠️ Preencha pelo menos até o retorno do intervalo.";
+        return;
+    }
+
+    const metaMin = parseMeta(meta);          // minutos
+    const entradaMin = parseHora(entradaV);
+    const saidaIntMin = parseHora(saidaIntV);
+    const retornoMin = parseHora(retornoV);
+
+    if (isNaN(metaMin) || isNaN(entradaMin) || isNaN(saidaIntMin) || isNaN(retornoMin)) {
+        out.textContent = "⚠️ Formato inválido em um dos campos (use HH:MM).";
+        return;
+    }
+
+    const pausa = retornoMin - saidaIntMin;
+    const saidaPrevista = addMinutos(entradaV, metaMin + pausa); // "HH:MM"
+
+    let texto = "";
+
+    // se NÃO preencher saida_final → previsão
+    if (!saidaFinalV) {
+        texto += `🧮 Horário previsto de saída: ${saidaPrevista}\n`;
+        out.textContent = texto;
+        iniciarContagem(saidaPrevista);
+        return;
+    }
+
+    // se preencher → calcula tempo real trabalhado
+    const saidaFinalMin = parseHora(saidaFinalV);
+    if (isNaN(saidaFinalMin)) {
+        out.textContent = "⚠️ Formato inválido na saída final.";
+        return;
+    }
+
+    const parte1 = saidaIntMin - entradaMin;
+    const parte2 = saidaFinalMin - retornoMin;
+    const trabalhado = parte1 + parte2;
+    const dif = trabalhado - metaMin;
+
+    texto += `⏱️ Tempo total trabalhado: ${formatarMinutos(trabalhado)}\n`;
+    texto += `🎯 Meta: ${formatarMinutos(metaMin)}\n`;
+    texto += `🧮 Horário previsto de saída: ${saidaPrevista}\n\n`;
+
+    if (dif > 0) texto += `💪 Hora extra: ${formatarMinutos(dif)}`;
+    else if (dif < 0) texto += `⚠️ Faltaram: ${formatarMinutos(-dif)}`;
+    else texto += `✅ Meta cumprida!`;
+
+    out.textContent = texto;
+
+    iniciarContagem(saidaPrevista);
+}
+
+/* ----------------- limpeza / export (placeholders) ----------------- */
+
+function limparCampos() {
+    clearInterval(timerInterval);
+    camposOrdem.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = "";
+            el.style.background = "";
+        }
+    });
+    document.getElementById("resultado").textContent = "";
+    document.getElementById("tempoRestante").textContent = "Tempo restante:";
+}
+async function exportarPDF() {
+
+const elemento = document.getElementById("printArea");
+
+if (!elemento) {
+    alert("Erro: elemento printArea não encontrado.");
+    return;
+}
+
+const canvas = await html2canvas(elemento);
+const imgData = canvas.toDataURL("image/png");
+
+const { jsPDF } = window.jspdf;
+
+const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "pt",
+    format: "a4"
+});
+
+const pageWidth = pdf.internal.pageSize.getWidth();
+const imgWidth = pageWidth - 40;
+const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+pdf.addImage(imgData, "PNG", 20, 20, imgWidth, imgHeight);
+
+pdf.save("controle_ponto.pdf");
+}
+
+</script>
+
+</body>
+</html>
